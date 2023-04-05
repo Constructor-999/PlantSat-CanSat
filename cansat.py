@@ -1,4 +1,3 @@
-from gpiozero import AngularServo
 import board
 import busio
 from adafruit_ms8607 import MS8607
@@ -92,7 +91,7 @@ radio = RF24(22, 0)
 network = RF24Network(radio)
 
 if not radio.begin():
-    blink(led, 5, 0.2, (255, 0, 0))
+    blink(led, 5, 0.2, (255, 0, 128))
     raise OSError("nRF24L01 hardware isn't responding")
 
 radio.channel = 90
@@ -125,6 +124,7 @@ def larguage_process():
 
 #---------------------------Main code---------------------------
 if __name__ == "__main__":
+    led[0] = (50, 149, 168)
     while True:
          print(pvlib.atmosphere.pres2alt(ms8607sensor.pressure * 100), baseHeight)
          if pvlib.atmosphere.pres2alt(ms8607sensor.pressure * 100) > baseHeight + 20:
