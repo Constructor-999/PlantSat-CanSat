@@ -189,6 +189,7 @@ if __name__ == "__main__":
             
         while True:
             led[0] = (0, 0, 0)
+            time.sleep(60)
             radio.power = True
             if minutes == 60:
                  led[0] = (245, 147, 27)
@@ -203,7 +204,6 @@ if __name__ == "__main__":
                             led[0] = (0, 50, 0)
                        else:
                             led[0] = (50, 0, 0)
-            time.sleep(60)
             if rawNmea.startswith("$GPRMC") or rawNmea.startswith("$GPGGA"):
                 GPSinfos = pynmea2.parse(rawNmea)
                 latitude = round(GPSinfos.latitude, 8)
