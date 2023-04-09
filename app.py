@@ -12,6 +12,7 @@ import math
 from pyrf24 import RF24, RF24Network, RF24_2MBPS
 import board
 from adafruit_ms8607 import MS8607
+from gpiozero import AngularServo
 
 i2c = board.I2C()  
 sensor = MS8607(i2c)
@@ -19,7 +20,9 @@ sensor = MS8607(i2c)
 async_mode = None
 baseCoords = (46.812925, 6.943250)
 baseCoordX, baseCoordY = baseCoords
-baseHeight = round(pvlib.atmosphere.pres2alt(round(sensor.pressure, 2) * 100), 2)
+OCoords = (46.620477, 6.435002)
+OCoordX, OCoordY = OCoords
+
 THIS_NODE = 0o0
 
 app = Flask(__name__, template_folder="templates")
@@ -47,8 +50,12 @@ def fromSec(s):
     seconds = s - (minutes * 60)
     return '{:02}-{:02}-{:02}'.format(int(hours), int(minutes), int(seconds))
 
+ServoH = AngularServo(24, initial_angle=0, min_angle=-90, max_angle=90, min_pulse_width=0.5/1000, max_pulse_width=2.5/1000, frame_width=20/1000)
+ServoB = AngularServo(25, initial_angle=0, min_angle=-90, max_angle=90, min_pulse_width=0.5/1000, max_pulse_width=2.5/1000, frame_width=20/1000)
+
 def nrf_recever_thread():
     while True:
+        baseHeight = round(pvlib.atmosphere.pres2alt(round(sensor.pressure, 2) * 100), 2)
         network.update()
         while network.available():
             header, payload = network.read()
@@ -66,6 +73,29 @@ def nrf_recever_thread():
                             break
             try:
                 canRes = struct.unpack("<Bfffffif", payload)
+                R = 6371
+
+                xCan = R * math.cos(round(canRes[1], 8)) * math.cos(round(canRes[2], 8))
+                yCan = R * math.cos(round(canRes[1], 8)) * math.sin(round(canRes[2], 8))
+                zCan = R * math.sin(round(canRes[1], 8))
+
+                xBase = R * math.cos(baseCoordX) * math.cos(baseCoordY)
+                yBase = R * math.cos(baseCoordX) * math.sin(baseCoordY)
+                zBase = R * math.sin(baseCoordX)
+
+                xO = R * math.cos(OCoordX) * math.cos(OCoordY)
+                yO = R * math.cos(OCoordX) * math.sin(OCoordY)
+                zO = R * math.sin(OCoordX)
+
+                distOBase = math.dist((xO, yO), (xBase, yBase))
+                distCanBase = math.dist((xCan, yCan), (xBase, yBase))
+                distOCan = math.dist((xO, yO), (xCan, yCan))
+
+                angleCanBase = math.degrees(math.acos((distCanBase**2 + distOBase**2 - distOCan**2 )/(2 * distCanBase * distOBase)))
+                angleCanHeight = math.degrees(math.atan((round(pvlib.atmosphere.pres2alt(round(canRes[3], 2) * 100), 2) - baseHeight)/distCanBase))
+
+                ServoH.angle = angleCanBase
+                ServoB.angle = angleCanHeight
 
                 socketio.emit("can_logs", 
                             { "latitude": round(canRes[1], 8), 
@@ -77,8 +107,8 @@ def nrf_recever_thread():
                              "CO2": canRes[6],
                              "O2": round(canRes[7], 2),
                              "heure": f'{nowDate.month}-{nowDate.day}-{nowDate.hour}-{nowDate.minute}-{nowDate.second}',
-                             "vertical": round(angleH, 2),
-                             "horizontal": round(angleP, 2)})
+                             "vertical": round(angleCanHeight, 2),
+                             "horizontal": round(angleCanBase, 2)})
                 canDF = pd.DataFrame(
                      {"s": [f'{get_sec(nowDate.hour, nowDate.minute, nowDate.second)}'],
                      "time": [f'{nowDate.month}-{nowDate.day}-{nowDate.hour}-{nowDate.minute}-{nowDate.second}'],
@@ -124,8 +154,9 @@ def calcPOS():
         if (pd.read_csv("./data/PlantSatLogs.csv")["height"].tolist()[ind -1] - 5) > pd.read_csv("./data/PlantSatLogs.csv")["height"].tolist()[ind]:
             CSVdata = pd.read_csv("./data/PlantSatLogs.csv", index_col=False, header=0)
             regrS = linear_model.LinearRegression()
-            regrLat = linear_model.LinearRegression()
-            regrLong = linear_model.LinearRegression()
+            regrX = linear_model.LinearRegression()
+            regrY = linear_model.LinearRegression()
+            regrZ = linear_model.LinearRegression()
 
             latY = CSVdata.latitude.values[ind:]
             longY = CSVdata.longitude.values[ind:]
@@ -136,29 +167,46 @@ def calcPOS():
             longY = longY.reshape(len(CSVdata.longitude.values[ind:]), 1)
             xHeight = xHeight.reshape(len(CSVdata.height.values[ind:]), 1)
             timeS = timeS.reshape(len(CSVdata.s.values[ind:]), 1)
+
+            canX = []
+            canY = []
+            canZ = []
+            R = 6371
+
+            for nb in range(0, latY.size -1):
+                canX.append(R * math.cos(latY[nb]) * math.cos(longY[nb]))
+                canY.append(R * math.cos(latY[nb]) * math.sin(longY[nb]))
+                canZ.append(R * math.sin(latY[nb]))
+
             
-            regrLat.fit(xHeight, latY)
-            regrLong.fit(xHeight, longY)
+            regrX.fit(xHeight, canX)
+            regrY.fit(xHeight, canY)
+            regrZ.fit(xHeight, canZ)
             regrS.fit(xHeight, timeS)
 
-            predLat = np.array(regrLat.predict(xHeight)).astype(float)
-            predLong = np.array(regrLong.predict(xHeight)).astype(float)
+            predX = np.array(regrX.predict(xHeight)).astype(float)
+            predY = np.array(regrY.predict(xHeight)).astype(float)
+            predZ = np.array(regrZ.predict(xHeight)).astype(float)
             predSec = np.array(regrS.predict(xHeight)).astype(int)
 
-            aLat = (predLat.tolist()[0][0] - predLat.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
-            bLat = predLat.tolist()[0][0] - (aLat * xHeight.tolist()[0][0])
+            aX = (predX.tolist()[0][0] - predX.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
+            bX = predX.tolist()[0][0] - (aX * xHeight.tolist()[0][0])
 
-            aLong = (predLong.tolist()[0][0] - predLong.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
-            bLong = predLong.tolist()[0][0] - (aLong * xHeight.tolist()[0][0])
+            aY = (predY.tolist()[0][0] - predY.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
+            bY = predY.tolist()[0][0] - (aY * xHeight.tolist()[0][0])
+
+            aZ = (predZ.tolist()[0][0] - predZ.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
+            bZ = predZ.tolist()[0][0] - (aZ * xHeight.tolist()[0][0])
 
             aS = (predSec.tolist()[0][0] - predSec.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
             bS = predSec.tolist()[0][0] - (aS * xHeight.tolist()[0][0])
+
+            predlat = math.asin((aZ * 0 + bZ) / R)
+            predlong = math.atan2((aY * 0 + bY), (aX * 0 + bX))
             
-            pd.DataFrame({"predH": [0], "predLat": [aLat * 0 + bLat], "predLong": [aLong * 0 + bLong], "predTime": [aS * 0 + bS]}).to_csv("./data/predictions.csv", mode="a", index=False, header=False)
-            emit("resPred", {"hasInfos": True,"point": {"X": f'{datetime.datetime.now().month}-{datetime.datetime.now().day}-{fromSec(aS * 0 + bS)}', "Y": '0'}, "label": f'Prediction {pd.read_csv("./data/predictions.csv", index_col=False, header=0).predTime.values.size}', "predLat": f'{aLat * 0 + bLat}', "predLong": f'{aLong * 0 + bLong}'})
+            pd.DataFrame({"predH": [0], "predLat": [predlat], "predLong": [predlong], "predTime": [f'{fromSec(round(aS * 0 + bS, 0))}']}).to_csv("./data/predictions.csv", mode="a", index=False, header=False)
+            emit("resPred", {"hasInfos": True ,"point": {"X": f'{datetime.datetime.now().month}-{datetime.datetime.now().day}-{fromSec(round(aS * 0 + bS, 0))}', "Y": '0'}, "label": f'Prediction {pd.read_csv("./data/predictions.csv", index_col=False, header=0).predTime.values.size}', "predLat": f'{predlat}', "predLong": f'{predlong}'})
             break
-        else:
-            emit("resPred", {"hasInfos": False})
 
 @socketio.event
 def connect():
