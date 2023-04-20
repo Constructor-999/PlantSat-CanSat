@@ -75,17 +75,17 @@ def nrf_recever_thread():
                 canRes = struct.unpack("<Bfffffif", payload)
                 R = 6371
 
-                xCan = R * math.cos(round(canRes[1], 8)) * math.cos(round(canRes[2], 8))
-                yCan = R * math.cos(round(canRes[1], 8)) * math.sin(round(canRes[2], 8))
-                zCan = R * math.sin(round(canRes[1], 8))
+                xCan = R * math.cos(math.radians(round(canRes[1], 8))) * math.cos(math.radians(round(canRes[2], 8)))
+                yCan = R * math.cos(math.radians(round(canRes[1], 8))) * math.sin(math.radians(round(canRes[2], 8)))
+                zCan = R * math.sin(math.radians(round(canRes[1], 8)))
 
-                xBase = R * math.cos(baseCoordX) * math.cos(baseCoordY)
-                yBase = R * math.cos(baseCoordX) * math.sin(baseCoordY)
-                zBase = R * math.sin(baseCoordX)
+                xBase = R * math.cos(math.radians(baseCoordX)) * math.cos(math.radians(baseCoordY))
+                yBase = R * math.cos(math.radians(baseCoordX)) * math.sin(math.radians(baseCoordY))
+                zBase = R * math.sin(math.radians(baseCoordX))
 
-                xO = R * math.cos(OCoordX) * math.cos(OCoordY)
-                yO = R * math.cos(OCoordX) * math.sin(OCoordY)
-                zO = R * math.sin(OCoordX)
+                xO = R * math.cos(math.radians(OCoordX)) * math.cos(math.radians(OCoordY))
+                yO = R * math.cos(math.radians(OCoordX)) * math.sin(math.radians(OCoordY))
+                zO = R * math.sin(math.radians(OCoordX))
 
                 distOBase = math.dist((xO, yO), (xBase, yBase))
                 distCanBase = math.dist((xCan, yCan), (xBase, yBase))
@@ -174,9 +174,9 @@ def calcPOS():
             R = 6371
 
             for nb in range(0, latY.size -1):
-                canX.append(R * math.cos(latY[nb]) * math.cos(longY[nb]))
-                canY.append(R * math.cos(latY[nb]) * math.sin(longY[nb]))
-                canZ.append(R * math.sin(latY[nb]))
+                canX.append(R * math.cos(math.radians(latY[nb][0])) * math.cos(math.radians(longY[nb][0])))
+                canY.append(R * math.cos(math.radians(latY[nb][0])) * math.sin(math.radians(longY[nb][0])))
+                canZ.append(R * math.sin(math.radians(latY[nb][0])))
 
             
             regrX.fit(xHeight, canX)
@@ -189,20 +189,20 @@ def calcPOS():
             predZ = np.array(regrZ.predict(xHeight)).astype(float)
             predSec = np.array(regrS.predict(xHeight)).astype(int)
 
-            aX = (predX.tolist()[0][0] - predX.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
-            bX = predX.tolist()[0][0] - (aX * xHeight.tolist()[0][0])
+            aX = (predX.tolist()[0] - predX.tolist()[-1]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
+            bX = predX.tolist()[0] - (aX * xHeight.tolist()[0][0])
 
-            aY = (predY.tolist()[0][0] - predY.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
-            bY = predY.tolist()[0][0] - (aY * xHeight.tolist()[0][0])
+            aY = (predY.tolist()[0] - predY.tolist()[-1]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
+            bY = predY.tolist()[0] - (aY * xHeight.tolist()[0][0])
 
-            aZ = (predZ.tolist()[0][0] - predZ.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
-            bZ = predZ.tolist()[0][0] - (aZ * xHeight.tolist()[0][0])
+            aZ = (predZ.tolist()[0] - predZ.tolist()[-1]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
+            bZ = predZ.tolist()[0] - (aZ * xHeight.tolist()[0][0])
 
             aS = (predSec.tolist()[0][0] - predSec.tolist()[-1][0]) / (xHeight.tolist()[0][0] - xHeight.tolist()[-1][0])
             bS = predSec.tolist()[0][0] - (aS * xHeight.tolist()[0][0])
 
-            predlat = math.asin((aZ * 0 + bZ) / R)
-            predlong = math.atan2((aY * 0 + bY), (aX * 0 + bX))
+            predlat = math.degrees(math.asin((aZ * 0 + bZ) / R))
+            predlong = math.degrees(math.atan2((aY * 0 + bY), (aX * 0 + bX)))
             
             pd.DataFrame({"predH": [0], "predLat": [predlat], "predLong": [predlong], "predTime": [f'{fromSec(round(aS * 0 + bS, 0))}']}).to_csv("./data/predictions.csv", mode="a", index=False, header=False)
             emit("resPred", {"hasInfos": True ,"point": {"X": f'{datetime.datetime.now().month}-{datetime.datetime.now().day}-{fromSec(round(aS * 0 + bS, 0))}', "Y": '0'}, "label": f'Prediction {pd.read_csv("./data/predictions.csv", index_col=False, header=0).predTime.values.size}', "predLat": f'{predlat}', "predLong": f'{predlong}'})
