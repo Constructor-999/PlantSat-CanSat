@@ -1,7 +1,12 @@
 # PlantSat Project - Code for the CanSat
 
+### Installation
+* clone the repository via git
+* then go in the folder and run `sudo sh ./build.sh`
+
+### LED codes
 | CODE                  | LED | BLINK |
-|-----------------------|----|:-----:|
+|-----------------------|:---:|:-----:|
 | O2 sensor calibration | $\color{#6863f5}{\textsf{◼︎}}$ | ❌ |
 | Waiting for GPS connection | $\color{#ffff66}{\textsf{◼︎}}$ | ❌ |
 | GPS connected | $\color{#91ff66}{\textsf{◼︎}}$| ✅ |
