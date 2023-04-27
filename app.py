@@ -6,21 +6,26 @@ import pandas as pd
 from sklearn import linear_model
 import numpy as np
 import pvlib 
-import datetime 
-import geopy.distance
+import datetime
 import math
 from pyrf24 import RF24, RF24Network, RF24_2MBPS
 import board
 from adafruit_ms8607 import MS8607
 from gpiozero import AngularServo
+import argparse
 
 i2c = board.I2C()  
 sensor = MS8607(i2c)
 
+parser = argparse.ArgumentParser(prog='app.py',formatter_class=argparse.MetavarTypeHelpFormatter)
+parser.add_argument('-b', '--base', help='The coords of the center of the base', type=float, required=True, nargs=2)
+parser.add_argument('-o', '--origin', help='The coords of a point behind the base and in the 0° axis of the antenna', type=float, required=True, nargs=2)
+args = parser.parse_args()
+
 async_mode = None
-baseCoords = (46.812925, 6.943250)
+baseCoords = (args.base) #(46.812925, 6.943250)
 baseCoordX, baseCoordY = baseCoords
-OCoords = (46.620477, 6.435002)
+OCoords = (args.origin) #(46.620477, 6.435002)
 OCoordX, OCoordY = OCoords
 
 THIS_NODE = 0o0
